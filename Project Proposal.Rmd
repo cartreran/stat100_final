@@ -1,0 +1,42 @@
+---
+title: "Project Proposal"
+author: "Carter Nabors, Gage Lemaster"
+date: "`r Sys.Date()`"
+output: ioslides_presentation
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+# Key Focus Area
+
+## Sports, Travel, and Conferences
+
+-   Conference Realignment in College Sports
+
+-   Travel distances of Teams
+
+-   Emissions and Environmental Impact
+
+    ![](images/clipboard-3945088789.png){width="568"}
+
+## Conference Realignment
+
+-   College Sports
+
+    -   Media Rights
+
+    -   Competition
+
+    -   Conference Size
+
+![](images/clipboard-602194690.png){width="616"}
+
+## Travel Distance
+
+![](images/clipboard-3559435815.png){width="545"}
+
+## 
+
+![](images/clipboard-3398086047.png){width="556"}
