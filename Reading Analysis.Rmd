@@ -1,0 +1,6 @@
+---
+title: "Project Proposal"
+author: "Carter Nabors, Gage Lemaster"
+date: "`r Sys.Date()`"
+output: ioslides_presentation
+---

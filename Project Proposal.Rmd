@@ -11,32 +11,30 @@ knitr::opts_chunk$set(echo = FALSE)
 
 # Key Focus Area
 
-## Sports, Travel, and Conferences
+## College Sports Realignment
 
--   Conference Realignment in College Sports
+-   Changing of athletic conferences
 
--   Travel distances of Teams
+-   SEC, Big 10, ACC, Pac-12
 
--   Emissions and Environmental Impact
+-   Affect on players, teams, and schools
 
-    ![](images/clipboard-3945088789.png){width="568"}
+    ![](https://interactives.dallasnews.com/2016/realignment/images/_promo.jpg){width="568"}
 
-## Conference Realignment
+## Topics
 
--   College Sports
+-   Recruitment Changes
 
-    -   Media Rights
+-   Injury Rates
 
-    -   Competition
-
-    -   Conference Size
+-   Academic Impact
 
 ![](images/clipboard-602194690.png){width="616"}
 
-## Travel Distance
+## Data Sources
 
-![](images/clipboard-3559435815.png){width="545"}
+-   NCAA Records, team win-loss, athletic schedules
 
-## 
+-   ESPN, 247sports, Rivals
 
-![](images/clipboard-3398086047.png){width="556"}
+-   Sports Reference, NFL
