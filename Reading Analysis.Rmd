@@ -1,6 +1,22 @@
 ---
-title: "Project Proposal"
+title: "Reading Analysis"
 author: "Carter Nabors, Gage Lemaster"
 date: "`r Sys.Date()`"
 output: ioslides_presentation
 ---
+
+## Context
+
+![](images/1141px-NCAA_FBS_programs.png){width="700"}
+<br></br>
+134 FBS Schools in 10 Conferences
+
+## Football Travel
+
+- Teams can travel with 70 players - ESPN & NCAA Bylaws
+
+- Busses, Charter and Commercial Flights
+
+- 6-8 Away Games per Season
+
+
