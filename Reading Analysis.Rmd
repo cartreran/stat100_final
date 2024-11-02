@@ -5,11 +5,15 @@ date: "`r Sys.Date()`"
 output: ioslides_presentation
 ---
 
+# How has College Football Realignment Affected Travel?
+
 ## Context
 
-![](images/1141px-NCAA_FBS_programs.png){width="700"}
+![](images/1141px-NCAA_FBS_programs.png){width="600"}
 <br></br>
 134 FBS Schools in 10 Conferences
+
+Conference Realignment craze in 2010s
 
 ## Football Travel
 
@@ -19,4 +23,5 @@ output: ioslides_presentation
 
 - 6-8 Away Games per Season
 
+- 2024: 500,000 miles traveld by NCAA FBS programs
 
