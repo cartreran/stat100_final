@@ -1,8 +1,7 @@
 library(readr)
 library(dplyr)
 library(tidyverse)
-library(plotly)
-library(gapminder)
+library(geosphere)
 
 # Read in the official FBS list
 fbs_list <- read_csv("./data/FBS_list.csv") %>%
@@ -43,8 +42,10 @@ stadiums <- read_csv("./data/stadiums-geocoded.csv") %>%
     )
   )
         
-stadiums <- stadiums %>%
+teams <- stadiums %>%
   left_join(fbs_list, by = c("team" = "School"))
+
+## FBS TEAMS DO NOT PLAY AWAY AT NON-FBS TEAMS
 
 # Load the schedule dataset
 # https://www.sports-reference.com/cfb/years/2024-schedule.html
@@ -112,3 +113,30 @@ schedule <- read_csv("./data/2024_schedule.csv") %>%
     home_pts = temp_home_pts,
     away_pts = temp_away_pts
   )
+
+# write script looping through each stadium team,
+# going throguh schedule to find away games - 
+# calculate disantance for each and add together and 
+# assign to team
+
+teams$total_mileage <- 0
+
+conf_mileage <- teams %>%
+  group_by(conference) %>%
+  summarise(total_mileage = sum(total_mileage))
+
+for(i in 1:nrow(teams)){
+  team <- teams$team[i]
+  team_lat <- round(teams$latitude[i], digits = 4)
+  team_long <- round(teams$longitude[i], digits = 4)
+  away_games <- schedule[schedule$away == team, "home"]
+  total_mileage <- 0
+  for(j in 1:nrow(away_games)){
+    home_team <- away_games$home[j]
+    home_lat <- round(teams[teams$team == home_team, "latitude"]$latitude[1], digits = 4)
+    home_long <- round(teams[teams$team == home_team, "longitude"]$longitude[1], digits = 4)
+    distance <- distHaversine(matrix(c(team_long, team_lat), ncol = 2), matrix(c(home_long, home_lat), ncol = 2)) / 1609.34
+    total_mileage <- total_mileage + distance
+  }
+  teams$total_mileage[i] <- round(total_mileage)
+}
