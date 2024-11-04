@@ -122,7 +122,7 @@ schedule <- read_csv("./data/2024_schedule.csv") %>%
 
   # Filter for games involving FBS teams
   filter(temp_away %in% stadiums$team) %>%
-  
+
   # Remove unnecessary columns and rename temporary columns
   select(-home, -away, -home_pts, -away_pts, -winner, -loser, -win_pts, -lose_pts) %>%
   rename(
@@ -177,3 +177,59 @@ for(i in 1:nrow(teams)){
 conf_mileage <- teams %>%
   group_by(conference) %>%
   summarise(total_mileage = sum(total_mileage))
+
+realinged_teams <- c("California", "SMU", "Stanford", "USC", "UCLA", "Washington", "Oregon", "Arizona", "Arizona State", "Utah", "Colorado", "Army", "Texas", "Kennesaw State", "Oklahoma")
+
+# Add a column to indicate if the team is realigned
+teams <- teams %>%
+  mutate(realigned = ifelse(team %in% realinged_teams, TRUE, FALSE))
+
+# Plot with different colors for realigned teams
+p <- ggplot() +
+
+  # create the collumn chart
+  geom_col(data = teams, aes(x = reorder(team, total_mileage), y = total_mileage, fill = realigned), width = 0.4) +
+
+  # add the text labels
+  geom_text(data = teams, aes(x = reorder(team, total_mileage), y = total_mileage, label = team), hjust = -0.1, size = 2.5) +
+
+  # add the fill colors
+  scale_fill_manual(values = c(`TRUE` = "#FF6347", `FALSE` = "#4682B4"), name = "Realigned", labels = c("No", "Yes")) +
+
+  # add the theme
+  theme_minimal() +
+
+  # adjust specifics
+  theme(
+
+    # remove axis text
+    axis.text.y = element_blank(),
+
+    # adjust axis titles
+    axis.title.x = element_text(size = 10, face = "bold"),
+    axis.title.y = element_text(size = 10, face = "bold"),
+
+    # adjust plot title
+    plot.title = element_text(size = 14, face = "bold", hjust = 0.5),
+
+    # adjust legend position and text
+    legend.position = "top",
+    legend.title = element_text(size = 8, face = "bold"),
+    legend.text = element_text(size = 8),
+
+    # adjust background
+    panel.background = element_rect(fill = "#F5F5F5", color = NA),
+    plot.background = element_rect(fill = "#F5F5F5", color = NA)
+
+  ) +
+
+  # add labels
+  labs(x = "Team", y = "Total Mileage (miles)", title = "Total Mileage for FBS Teams") +
+
+  # rotate the x-axis labels
+  coord_flip() +
+
+  # add dashed lines for the top 5, 10, 25, 50, and 100 teams
+  geom_vline(xintercept = c(nrow(teams) - 4.5, nrow(teams) - 9.5, nrow(teams) - 24.5, nrow(teams) - 49.5, nrow(teams) - 99.5), linetype = "dashed", color = "grey")
+
+ggsave("./out/total_mileage_fbs.png", plot = p, width = 16, height = 12, units = "in", dpi = 300)
