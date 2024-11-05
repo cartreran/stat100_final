@@ -1,3 +1,4 @@
+# nolint start
 library(readr)
 library(dplyr)
 library(tidyverse)
@@ -18,6 +19,9 @@ fbs_list <- read_csv("./data/FBS_list.csv") %>%
     "Louisiana–Monroe" = "Louisiana-Monroe")
 
   )
+
+
+
 
 # Read in the stadiums data
 # Source: https://github.com/gboeing/data-visualization/tree/main/ncaa-football-stadiums/data
@@ -58,19 +62,23 @@ teams <- stadiums %>%
 
 ## FBS TEAMS DO NOT PLAY AWAY AT NON-FBS TEAMS
 
-# Load the schedule dataset
+
+
+
 # https://www.sports-reference.com/cfb/years/2024-schedule.html
 schedule <- read_csv("./data/2024_schedule.csv") %>% 
 
   # Rename columns and remove weekly rankings
   mutate(
-    home = gsub("\\([0-9]{1,2}\\)\\s*", "", winner), 
-    away = gsub("\\([0-9]{1,2}\\)\\s*", "", loser),
-    home_pts = win_pts,
-    away_pts = lose_pts
+    winner = gsub("\\([0-9]{1,2}\\)\\s*", "", winner), 
+    loser = gsub("\\([0-9]{1,2}\\)\\s*", "", loser),
+    home = ifelse(grepl("@", away_neutral), loser, winner),
+    away = ifelse(grepl("@", away_neutral), winner, loser),
+    home_pts = ifelse(grepl("@", away_neutral), lose_pts, win_pts),
+    away_pts = ifelse(grepl("@", away_neutral), win_pts, lose_pts)
   ) %>%
 
-  # Correct team names
+  # Correct names
   mutate(
     home = recode(home,
       "Connecticut" = "UConn",
@@ -112,26 +120,16 @@ schedule <- read_csv("./data/2024_schedule.csv") %>%
     )
   ) %>%
 
-  # Resort away and home teams
-  mutate(
-    temp_home = ifelse(grepl("@", away_neutral), away, home),
-    temp_away = ifelse(grepl("@", away_neutral), home, away),
-    temp_home_pts = ifelse(grepl("@", away_neutral), away_pts, home_pts),
-    temp_away_pts = ifelse(grepl("@", away_neutral), home_pts, away_pts)
-  ) %>%
-
   # Filter for games involving FBS teams
-  filter(temp_away %in% stadiums$team) %>%
+  filter(away %in% stadiums$team) %>%
 
   # Remove unnecessary columns and rename temporary columns
-  select(-home, -away, -home_pts, -away_pts, -winner, -loser, -win_pts, -lose_pts) %>%
-  rename(
-    home = temp_home,
-    away = temp_away,
-    home_pts = temp_home_pts,
-    away_pts = temp_away_pts
-  )
+  select(-winner, -loser, -win_pts, -lose_pts)
 
+
+
+
+# todo: 
 # write script looping through each stadium team,
 # going throguh schedule to find away games - 
 # calculate disantance for each and add together and 
@@ -163,6 +161,7 @@ for(i in 1:nrow(teams)){
     home_long <- round(teams[teams$team == home_team, "longitude"]$longitude[1], digits = 4)
 
     # Calculate the distance in miles
+    # not sure why it needed a matrix - had to look that one up
     distance <- distHaversine(matrix(c(team_long, team_lat), ncol = 2), matrix(c(home_long, home_lat), ncol = 2)) / 1609.34
 
     # Add the distance to the total mileage
@@ -183,6 +182,9 @@ realinged_teams <- c("California", "SMU", "Stanford", "USC", "UCLA", "Washington
 # Add a column to indicate if the team is realigned
 teams <- teams %>%
   mutate(realigned = ifelse(team %in% realinged_teams, TRUE, FALSE))
+
+
+
 
 # Plot with different colors for realigned teams
 p <- ggplot() +
@@ -224,7 +226,7 @@ p <- ggplot() +
   ) +
 
   # add labels
-  labs(x = "Team", y = "Total Mileage (miles)", title = "Total Mileage for FBS Teams") +
+  labs(x = "Team", y = "Total Mileage", title = "Total Mileage for FBS Teams") +
 
   # rotate the x-axis labels
   coord_flip() +
@@ -233,3 +235,47 @@ p <- ggplot() +
   geom_vline(xintercept = c(nrow(teams) - 4.5, nrow(teams) - 9.5, nrow(teams) - 24.5, nrow(teams) - 49.5, nrow(teams) - 99.5), linetype = "dashed", color = "grey")
 
 ggsave("./out/total_mileage_fbs.png", plot = p, width = 16, height = 12, units = "in", dpi = 300)
+
+
+
+
+
+# Remove realigned schools from each conference's calculation
+conf_and_realigned_emissions <- teams %>%
+  filter(!realigned) %>%
+  group_by(conference) %>%
+  summarise(emissions = round(sum(total_mileage) * 0.17 / n(), digits = 2))
+
+realigned_emissions <- teams %>%
+  filter(realigned) %>%
+  summarise(conference = "Realigned", emissions = round(sum(total_mileage) * 0.17 / nrow(filter(teams, realigned)), digits = 2))
+
+# Combine the two data
+conf_and_realigned_emissions <- bind_rows(conf_and_realigned_emissions, realigned_emissions)
+
+# Plot average total emissions by conference per team
+p2 <- ggplot() +
+  geom_col(data = conf_and_realigned_emissions, aes(x = reorder(conference, emissions), y = emissions, fill = conference), width = 0.6) +
+  
+  # Customize fill colors
+  scale_fill_manual(values = c("Realigned" = "#FF6347"), name = "Conference") +
+  
+  theme_minimal() +
+  
+  # Adjust theme
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1, size = 10),
+    axis.text.y = element_text(size = 10),
+    axis.title.x = element_text(size = 12, face = "bold"),
+    axis.title.y = element_text(size = 12, face = "bold"),
+    plot.title = element_text(size = 14, face = "bold", hjust = 0.5),
+    legend.position = "none",
+    panel.background = element_rect(fill = "#F5F5F5", color = NA),
+    plot.background = element_rect(fill = "#F5F5F5", color = NA)
+  ) +
+  
+  # Add labels
+  labs(x = "Conference", y = "Total Emissions (kg)", title = "Average Total Emissions by Conference Member")
+
+ggsave("./out/total_emissions_by_conference.png", plot = p2, width = 16, height = 12, units = "in", dpi = 300)
+# nolint end
