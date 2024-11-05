@@ -5,7 +5,7 @@ date: "`r Sys.Date()`"
 output: ioslides_presentation
 ---
 
-# How has College Football Realignment Affected Travel?
+# How has College Football Realignment Affected Travel of FBS Teams?
 
 ## Context
 
