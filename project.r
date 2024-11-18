@@ -7,11 +7,16 @@ library(ggplot2)
 library(giscoR)
 library(ggrepel)
 library(ggridges)
-source("./R/clean_schedule.r")
+source("./R/functions.r")
 
 realinged_teams <- c("California", "SMU", "Stanford", "USC", "UCLA", "Washington", "Oregon", "Arizona", "Arizona State", "Utah", "Colorado", "Army", "Texas", "Kennesaw State", "Oklahoma")
 
 US <- gisco_get_countries(country = "US", resolution = "1")
+
+time_zones <- data.frame(
+  lon = c( -82, -97, -114),
+  label = c( "Central", "Mountain", "Pacific")
+)
 
 breakpoints <- c(2000, 3000, 4000, 5000, 6000, 7000)
 
@@ -56,43 +61,15 @@ schedules <- list(
   "2024" = dat_2024
 )
 
-get_distance <- function(year, teams) {
-  for (i in 1:nrow(teams)) {
-    total_mileage <- 0
-    team <- teams$team[i]
-    team_lat <- round(teams$latitude[i], digits = 4)
-    team_long <- round(teams$longitude[i], digits = 4)
-    away_games <- schedules[[year]][schedules[[year]]$away == team, "home"]
-    for (j in 1:nrow(away_games)) {
-      home_team <- away_games$home[j]
-      if (!is.na(home_team) && any(teams$team == home_team)) {
-        home_lat <- round(teams[teams$team == home_team, "latitude"]$latitude[1], digits = 4)
-        home_long <- round(teams[teams$team == home_team, "longitude"]$longitude[1], digits = 4)
-        distance <- distHaversine(matrix(c(team_long, team_lat), ncol = 2), matrix(c(home_long, home_lat), ncol = 2)) / 1609.34
-        total_mileage <- total_mileage + distance
-      }
-    }
-    total_mileage <- round(total_mileage)
-    col_name <- paste0("total_mileage_", year)
-    teams[[col_name]][i] <- 0
-    teams[[col_name]][i] <- total_mileage
-  }
-  return(teams)
-}
+lines <- gc(dat_2024, teams, realinged_teams)
 
 teams <- get_distance("2021", teams)
 teams <- get_distance("2022", teams)
 teams <- get_distance("2023", teams)
 teams <- get_distance("2024", teams)
 
-conf_mileage <- teams %>%
-  group_by(conference) %>%
-  summarise(total_mileage = sum(total_mileage_2024))
-
 teams <- teams %>%
   mutate(realigned = ifelse(team %in% realinged_teams, TRUE, FALSE))
-
-conf_and_realigned <- bind_rows(teams %>% filter(!realigned & conference != "Pac-12"), teams %>% filter(realigned) %>% mutate(conference = "Realigned"))
 
 teams_long <- teams %>%
   select(team, total_mileage_2021, total_mileage_2022, total_mileage_2023, total_mileage_2024, realigned) %>%
@@ -103,17 +80,29 @@ teams_long <- teams %>%
   ) %>%
   mutate(year = as.numeric(str_extract(year, "\\d{4}")))
 
-
-conf_and_realigned_emissions <- teams %>%
+conf_and_realigned_miles <- teams %>%
   filter(!realigned) %>%
   group_by(conference) %>%
-  summarise(emissions = round(sum(total_mileage_2024) * 0.17 / n(), digits = 2))
+  summarise(mileage = round(sum(total_mileage_2024) / n(), digits = 0), bus_mileage = round(sum(bus_mileage_2024) / n(), digits = 0), plane_mileage = round(sum(plane_mileage_2024) / n(), digits = 0))
 
-realigned_emissions <- teams %>%
+realigned_emissions2 <- teams %>%
   filter(realigned) %>%
-  summarise(conference = "Realigned", emissions = round(sum(total_mileage_2024) * 0.17 / nrow(filter(teams, realigned)), digits = 2))
+  summarise(conference = "Realigned", mileage = round(sum(total_mileage_2024) / nrow(filter(teams, realigned)), digits = 0), bus_mileage = round(sum(bus_mileage_2024) / nrow(filter(teams, realigned)), digits = 0), plane_mileage = round(sum(plane_mileage_2024) / nrow(filter(teams, realigned)), digits = 0))
 
-conf_and_realigned_emissions <- bind_rows(conf_and_realigned_emissions, realigned_emissions)
+cr_data <- bind_rows(conf_and_realigned_miles, realigned_emissions2) %>% mutate(emissions = (bus_mileage * 3) + (plane_mileage * 19))
+
+cr_data_long <- cr_data %>%
+  select(-mileage) %>%
+  rename(Bus = bus_mileage, Plane = plane_mileage) %>%
+  pivot_longer(
+    cols = c(Plane, Bus),
+    names_to = "type",
+    values_to = "value"
+  ) %>%
+  mutate(measurement = "\u200BMileage")
+cr_data_long <- bind_rows(cr_data_long, cr_data_long %>% mutate(measurement = "Emissions (10kg)", value = (value * ifelse(type == "Bus", 3, 19)) / 10))
+cr_data_long <- cr_data_long %>%
+  mutate(conference = factor(conference, levels = unique(cr_data_long$conference[order(cr_data_long$value[cr_data_long$measurement == "Emissions (10kg)"], decreasing = TRUE)])))
 
 p <- ggplot() +
   geom_col(data = teams, aes(x = reorder(team, total_mileage_2024), y = total_mileage_2024, fill = realigned), width = 0.4) +
@@ -135,21 +124,33 @@ p <- ggplot() +
   coord_flip() +
   geom_vline(xintercept = c(nrow(teams) - 4.5, nrow(teams) - 9.5, nrow(teams) - 24.5, nrow(teams) - 49.5, nrow(teams) - 99.5), linetype = "dashed", color = "grey")
 
-p2 <- ggplot() +
-  geom_col(data = conf_and_realigned_emissions, aes(x = reorder(conference, emissions), y = emissions, fill = conference), width = 0.6) +
-  scale_fill_manual(values = c("Realigned" = "#FF6347"), name = "Conference") +
+p2 <- ggplot(cr_data_long) +
+  geom_bar(aes(x = measurement, y = value, fill = type),
+    position = "stack",
+    stat = "identity"
+  ) +
+  facet_grid(~conference, switch = "x") +
+  scale_fill_manual(values = c("Bus" = "#FF6347", "Plane" = "grey"), name = "Type") +
   theme_minimal() +
   theme(
-    axis.text.x = element_text(angle = 45, hjust = 1, size = 10),
-    axis.text.y = element_text(size = 10),
+    strip.placement = "outside",
+    strip.background = element_rect(fill = NA, color = "white"),
+    panel.spacing = unit(0.5, "cm"),
+    axis.text.x = element_text(angle = 45, hjust = 1),
     axis.title.x = element_text(size = 12, face = "bold"),
     axis.title.y = element_text(size = 12, face = "bold"),
     plot.title = element_text(size = 14, face = "bold", hjust = 0.5),
-    legend.position = "none",
+    legend.position = "top",
+    legend.title = element_text(size = 10, face = "bold"),
+    legend.text = element_text(size = 8),
     panel.background = element_rect(fill = "#F5F5F5", color = NA),
     plot.background = element_rect(fill = "#F5F5F5", color = NA)
   ) +
-  labs(x = "Conference", y = "Total Emissions (kg)", title = "Average Total Emissions by Conference Member")
+  labs(
+    x = "Measurement",
+    y = "Value",
+    title = "Mileage and Emissions by Conference"
+  )
 
 p3 <- ggplot() +
   geom_sf(data = US, fill = "lightgrey", color = "white", alpha = 0.5) +
@@ -174,17 +175,21 @@ p3 <- ggplot() +
     box.padding = 0.35, point.padding = 0.5, segment.color = "grey50"
   )
 
-p4 <- ggplot(teams_long, aes(x = year, y = mileage, group = team, color = realigned)) +
-      geom_line() +
-      geom_point() +
-      geom_vline(xintercept = 2024, linetype = "dashed", color = "black", alpha = 0.5) +
-      annotate("text", x = 2024, y = max(teams_long$mileage), 
-           label = "Conference\nRealignment", 
-           hjust = 1.1, vjust = 1) +
-      scale_color_manual(values = c(`TRUE` = "#FF6347", `FALSE` = "grey"), 
-                name = "Realigned", labels = c("No", "Yes")) +
-      theme_minimal() +
-      labs(
+p4 <- ggplot(teams_long %>% filter(team != "Hawaii"), aes(x = year, y = mileage, group = team, color = realigned)) +
+  geom_line() +
+  geom_point() +
+  geom_vline(xintercept = 2024, linetype = "dashed", color = "black", alpha = 0.5) +
+  annotate("text",
+    x = 2024, y = max(teams_long$mileage),
+    label = "Conference\nRealignment",
+    hjust = 1.1, vjust = 1
+  ) +
+  scale_color_manual(
+    values = c(`TRUE` = "#FF6347", `FALSE` = "grey"),
+    name = "Realigned", labels = c("No", "Yes")
+  ) +
+  theme_minimal() +
+  labs(
         title = "Change in Travel Distance Over Time (2021-2024)",
         x = "Year",
         y = "Total Mileage"
@@ -197,7 +202,30 @@ p4 <- ggplot(teams_long, aes(x = year, y = mileage, group = team, color = realig
         plot.background = element_rect(fill = "#F5F5F5", color = NA)
       )
 
+p4
+
+p5 <- ggplot() +
+  geom_sf(data = US, fill = "lightgray", color = "white", alpha = 0.5) +
+  geom_path(data = lines, aes(x = lon, y = lat, group = id, color = realinged), size = 0.3, alpha = 0.7) +
+  geom_point(data = stadiums %>% filter(team %in% realinged_teams), aes(x = longitude, y = latitude), size = 0.7, alpha = 0.7) +
+  geom_vline(data = time_zones, aes(xintercept = lon), linetype = "dotted", color = "grey") +
+  theme_void() +
+  coord_sf(xlim = c(-125, -66), ylim = c(24, 50)) +
+  scale_color_manual(values = c(`TRUE` = "#FF6347", `FALSE` = "grey"), name = "Realigned", labels = c("No", "Yes")) +
+  labs(title = "Travel Lines for FBS Teams") +
+    theme(
+    plot.title = element_text(size = 16, face = "bold", hjust = 0.5),
+    legend.position = "bottom",
+    legend.title = element_text(size = 12, face = "bold"),
+    legend.text = element_text(size = 10),
+    legend.box = "vertical",
+    legend.box.just = "left",
+    panel.background = element_rect(fill = "#F5F5F5", color = NA),
+    plot.background = element_rect(fill = "#F5F5F5", color = NA)
+  ) 
+
 ggsave("./out/total_mileage_fbs.png", plot = p, width = 16, height = 12, units = "in", dpi = 300)
 ggsave("./out/total_emissions_by_conference.png", plot = p2, width = 16, height = 12, units = "in", dpi = 300)
 ggsave("./out/total_mileage_map.png", plot = p3, width = 16, height = 12, units = "in", dpi = 300)
 ggsave("./out/mileage_over_years_line.png", plot = p4, width = 16, height = 12, units = "in", dpi = 300)
+ggsave("./out/school_travel_lines.png", plot = p5, width = 16, height = 12, units = "in", dpi = 300)
