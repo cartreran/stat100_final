@@ -1,4 +1,6 @@
 #nolint start
+
+## Load libraries
 library(readr)
 library(dplyr)
 library(tidyverse)
@@ -8,24 +10,32 @@ library(giscoR)
 library(ggrepel)
 library(ggridges)
 library(gdtools)
+
+## Load Functions
 source("./R/functions.r")
 
+## Create list of schools that realinged
 realinged_teams <- c("California", "SMU", "Stanford", "USC", "UCLA", "Washington", "Oregon", "Arizona", "Arizona State", "Utah", "Colorado", "Army", "Texas", "Kennesaw State", "Oklahoma")
 
+## Gets US Map
 US <- gisco_get_countries(country = "US", resolution = "1")
 
+## Assings Time Zone variable 
 time_zones <- data.frame(
   lon = c( -82, -97, -114),
   label = c( "Central", "Mountain", "Pacific")
 )
 
+## Breakpoints for circles
 breakpoints <- c(2000, 3000, 4000, 5000, 6000, 7000)
 
+## Reads official list of wikipedia data, removes new lines, and renames ULM
 fbs_list <- read_csv("./data/FBS_list.csv") %>%
   rename(conference = `Current\r\nConference`) %>%
   select(School, conference) %>%
   mutate(School = recode(School, "Louisiana–Monroe" = "Louisiana-Monroe"))
 
+## Reads stadium data, selects correct teams, excludes Idaho, adds missing teams, standardizes names
 stadiums <- read_csv("./data/stadiums-geocoded.csv") %>%
   select(team, capacity, div, latitude, longitude, state) %>%
   filter(div == "fbs" & team != "Idaho") %>%
@@ -47,14 +57,17 @@ stadiums <- read_csv("./data/stadiums-geocoded.csv") %>%
     "Southern California" = "USC"
   ))
 
+## Connects teamd and stadiums
 teams <- stadiums %>%
   left_join(fbs_list, by = c("team" = "School"))
 
+## Cleans Schedule Data
 dat_2021 <- clean(read_csv("./data/2021_schedule.csv") %>% rename_all(tolower), stadiums)
 dat_2022 <- clean(read_csv("./data/2022_schedule.csv") %>% rename_all(tolower), stadiums)
 dat_2023 <- clean(read_csv("./data/2023_schedule.csv") %>% rename_all(tolower), stadiums)
 dat_2024 <- clean(read_csv("./data/2024_schedule.csv") %>% rename_all(tolower), stadiums)
 
+## Puts schedules into a list
 schedules <- list(
   "2021" = dat_2021,
   "2022" = dat_2022,
@@ -62,16 +75,20 @@ schedules <- list(
   "2024" = dat_2024
 )
 
+## Gets Great Circle lines for 2024
 lines <- gc(dat_2024, teams, realinged_teams)
 
+## Calculates distances for each year
 teams <- get_distance("2021", teams)
 teams <- get_distance("2022", teams)
 teams <- get_distance("2023", teams)
 teams <- get_distance("2024", teams)
 
+## Adds T/f variable for realinged 
 teams <- teams %>%
   mutate(realigned = ifelse(team %in% realinged_teams, TRUE, FALSE))
 
+## Pivots teams to make usable for table
 teams_long <- teams %>%
   select(team, total_mileage_2021, total_mileage_2022, total_mileage_2023, total_mileage_2024, realigned) %>%
   pivot_longer(
@@ -81,18 +98,22 @@ teams_long <- teams %>%
   ) %>%
   mutate(year = as.numeric(str_extract(year, "\\d{4}")))
 
+## Creates mileage data
 conf_and_realigned_miles <- teams %>%
   filter(!realigned) %>%
   group_by(conference) %>%
   summarise(mileage = round(sum(total_mileage_2024) / n(), digits = 0), bus_mileage = round(sum(bus_mileage_2024) / n(), digits = 0), plane_mileage = round(sum(plane_mileage_2024) / n(), digits = 0))
 
+## creates realinged mileage data
 realigned_emissions2 <- teams %>%
   filter(realigned) %>%
   summarise(conference = "Realigned", mileage = round(sum(total_mileage_2024) / nrow(filter(teams, realigned)), digits = 0), bus_mileage = round(sum(bus_mileage_2024) / nrow(filter(teams, realigned)), digits = 0), plane_mileage = round(sum(plane_mileage_2024) / nrow(filter(teams, realigned)), digits = 0))
 
+## binds data and calcs emisions
 cr_data <- bind_rows(conf_and_realigned_miles, realigned_emissions2) %>%
   mutate(emissions = (bus_mileage * 3) + (plane_mileage * 19))
 
+## makes data long
 cr_data_long <- cr_data %>%
   select(-mileage) %>%
   rename(Bus = bus_mileage, Plane = plane_mileage) %>%
@@ -259,8 +280,7 @@ p6 <- ggplot(state_data, aes(map_id = region)) +
     plot.background = element_rect(fill = "#F5F5F5", color = NA)
 )
   
-p6
-
+## Save plots to files in /out
 save_as_image(ft, "./out/table.png", res = 300)
 ggsave("./out/total_mileage_fbs.png", plot = p, width = 16, height = 12, units = "in", dpi = 300)
 ggsave("./out/total_emissions_by_conference.png", plot = p2, width = 16, height = 12, units = "in", dpi = 300)
