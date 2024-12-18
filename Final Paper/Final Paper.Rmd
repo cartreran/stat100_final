@@ -1,0 +1,689 @@
+---
+title: "Environmental Impact of FBS Conference Realignment"
+subtitle: "Sewanee, University of the South: STAT 100"
+author:
+  - name: Carter Nabors
+    email: naborca0@sewanee.edu
+  - name: Gage LeMaster
+    email: lemasng0@sewanee.edu
+date: "`r Sys.Date()`"
+linenumbers: false
+numbersections: true
+bibliography: Final-Paper.bib
+journal: "STAT 100"
+address:
+  - code: Sewanee
+    organization: Stat 100 Advent 2024 | M. Rudd — Sewanee, University of the South
+    city: Sewanee
+    state: Tennessee
+    country: United States
+abstract: 
+  College Football has evolved from a regional sport to a national enthrall. Massive growth like such has led to the controversial realignment of conferences in FBS.
+output: 
+  rticles::elsevier_article:
+    keep_tex: true
+    citation_package: natbib
+biblio - style: elsarticle - num
+header-includes:
+  - \makeatletter
+  - |
+      \def\ps@pprintTitle{%
+      \let\@oddhead\@empty
+      \let\@evenhead\@empty
+      \let\@oddfoot\@empty
+      \let\@evenfoot\@oddfoot
+      }
+  - \makeatother
+  - \usepackage{float}
+  - \restylefloat{figure}
+  - \pretocmd{\bibliography}{\newpage}{}{}
+  - \usepackage{xcolor} 
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+knitr::opts_chunk$set(cache = FALSE)
+knitr::opts_chunk$set(fig.align = "center")
+knitr::opts_chunk$set(warning = FALSE, message = FALSE)
+```
+
+```{r prework, message=FALSE, warning=FALSE}
+library(showtext)
+library(readr)
+library(dplyr)
+library(officer)
+library(tidyverse)
+library(geosphere)
+library(ggplot2)
+library(giscoR)
+library(ggrepel)
+library(ggridges)
+library(flextable)
+library(patchwork)
+library(gdtools)
+source("../R/functions.r")
+
+realinged_teams <- c("California", "SMU", "Stanford", "USC", "UCLA", "Washington", "Oregon", "Arizona", "Arizona State", "Utah", "Colorado", "Army", "Texas", "Kennesaw State", "Oklahoma")
+
+## Gets US Map
+US <- gisco_get_countries(country = "US", resolution = "1")
+
+## Assings Time Zone variable
+time_zones <- data.frame(
+  lon = c(-82, -97, -114),
+  label = c("Central", "Mountain", "Pacific")
+)
+
+theme_elsevier <- function() {
+  theme_minimal(base_size = 12, base_family = "serif") +
+    theme(
+      panel.border = element_rect(color = "black", fill = NA, size = 0.5),
+      panel.grid.minor = element_blank(),
+      axis.title = element_text(size = 14, face = "bold"),
+      axis.text = element_text(size = 12),
+      legend.title = element_text(size = 12, face = "bold"),
+      legend.text = element_text(size = 10),
+      legend.position = "top",
+      plot.title = element_text(size = 16, face = "bold", hjust = 0.5),
+      plot.subtitle = element_text(size = 14, hjust = 0.5),
+      plot.margin = margin(10, 10, 10, 10)
+    )
+}
+
+## Breakpoints for circles
+breakpoints <- c(2000, 3000, 4000, 5000, 6000, 7000)
+
+fbs_list <- read_csv("../data/FBS_list.csv") %>%
+  rename(conference = `Current\r\nConference`) %>%
+  select(School, conference) %>%
+  mutate(School = recode(School, "Louisiana–Monroe" = "Louisiana-Monroe"))
+
+stadiums <- read_csv("../data/stadiums-geocoded.csv") %>%
+  select(team, capacity, div, latitude, longitude, state) %>%
+  filter(div == "fbs" & team != "Idaho") %>%
+  add_row(team = "Coastal Carolina", capacity = 21000, div = "fbs", latitude = 33.7930, longitude = -79.0177) %>%
+  add_row(team = "Jacksonville State", capacity = 24000, div = "fbs", latitude = 33.8203, longitude = -85.7664) %>%
+  add_row(team = "James Madison", capacity = 25000, div = "fbs", latitude = 38.4344, longitude = -78.8704) %>%
+  add_row(team = "Kennesaw State", capacity = 10200, div = "fbs", latitude = 34.0290, longitude = -84.5676) %>%
+  add_row(team = "Liberty", capacity = 25000, div = "fbs", latitude = 37.3523, longitude = -79.1716) %>%
+  add_row(team = "Sam Houston", capacity = 14000, div = "fbs", latitude = 30.7083, longitude = -95.5383) %>%
+  add_row(team = "UAB", capacity = 47100, div = "fbs", latitude = 33.4971, longitude = -86.8121) %>%
+  mutate(team = recode(team,
+    "Louisiana-Lafayette" = "Louisiana",
+    "Connecticut" = "UConn",
+    "Louisiana-Monroe" = "Louisiana-Monroe",
+    "Miami" = "Miami (FL)",
+    "NIU" = "Northern Illinois",
+    "Mississippi" = "Ole Miss",
+    "USF" = "South Florida",
+    "Southern California" = "USC"
+  ))
+
+teams <- stadiums %>%
+  left_join(fbs_list, by = c("team" = "School"))
+
+dat_2021 <- clean(read_csv("../data/2021_schedule.csv") %>% rename_all(tolower), stadiums)
+dat_2022 <- clean(read_csv("../data/2022_schedule.csv") %>% rename_all(tolower), stadiums)
+dat_2023 <- clean(read_csv("../data/2023_schedule.csv") %>% rename_all(tolower), stadiums)
+dat_2024 <- clean(read_csv("../data/2024_schedule.csv") %>% rename_all(tolower), stadiums)
+
+schedules <- list(
+  "2021" = dat_2021,
+  "2022" = dat_2022,
+  "2023" = dat_2023,
+  "2024" = dat_2024
+)
+
+## Gets Great Circle lines for 2024
+lines <- gc(dat_2024, teams, realinged_teams)
+
+## Calculates distances for each year
+teams <- get_distance("2021", teams)
+teams <- get_distance("2022", teams)
+teams <- get_distance("2023", teams)
+teams <- get_distance("2024", teams)
+
+## Adds T/f variable for realinged
+teams <- teams %>%
+  mutate(realigned = ifelse(team %in% realinged_teams, TRUE, FALSE))
+
+## Pivots teams to make usable for table
+teams_long <- teams %>%
+  select(team, total_mileage_2021, total_mileage_2022, total_mileage_2023, total_mileage_2024, realigned) %>%
+  pivot_longer(
+    cols = starts_with("total_mileage"),
+    names_to = "year",
+    values_to = "mileage"
+  ) %>%
+  mutate(year = as.numeric(str_extract(year, "\\d{4}")))
+
+## Creates mileage data
+conf_and_realigned_miles <- teams %>%
+  filter(!realigned) %>%
+  group_by(conference) %>%
+  summarise(mileage = round(sum(total_mileage_2024) / n(), digits = 0), bus_mileage = round(sum(bus_mileage_2024) / n(), digits = 0), plane_mileage = round(sum(plane_mileage_2024) / n(), digits = 0))
+
+## creates realinged mileage data
+realigned_emissions2 <- teams %>%
+  filter(realigned) %>%
+  summarise(conference = "Realigned", mileage = round(sum(total_mileage_2024) / nrow(filter(teams, realigned)), digits = 0), bus_mileage = round(sum(bus_mileage_2024) / nrow(filter(teams, realigned)), digits = 0), plane_mileage = round(sum(plane_mileage_2024) / nrow(filter(teams, realigned)), digits = 0))
+
+## binds data and calcs emisions
+cr_data <- bind_rows(conf_and_realigned_miles, realigned_emissions2) %>%
+  mutate(emissions = (bus_mileage * 3) + (plane_mileage * 19))
+
+## makes data long
+cr_data_long <- cr_data %>%
+  select(-mileage) %>%
+  rename(Bus = bus_mileage, Plane = plane_mileage) %>%
+  pivot_longer(
+    cols = c(Plane, Bus),
+    names_to = "type",
+    values_to = "value"
+  ) %>%
+  mutate(measurement = "\u200BMileage")
+
+cr_data_long <- bind_rows(cr_data_long, cr_data_long %>% mutate(measurement = "Emissions (10kg)", value = (value * ifelse(type == "Bus", 3, 19)) / 10))
+
+cr_data_long <- cr_data_long %>%
+  mutate(conference = factor(conference, levels = unique(cr_data_long$conference[order(cr_data_long$value[cr_data_long$measurement == "Emissions (10kg)"], decreasing = TRUE)]))) %>%
+  mutate(type_realinged = paste(type, ifelse(conference == "Realigned", "Realigned", "Not Realigned"), sep = "-"))
+
+table_data <- cr_data %>%
+  pivot_longer(cols = c(mileage, bus_mileage, plane_mileage, emissions), names_to = "type", values_to = "value") %>%
+  pivot_wider(names_from = conference, values_from = value) %>%
+  mutate(type = recode(type, "mileage" = "Total Mileage", "bus_mileage" = "Bus Mileage", "plane_mileage" = "Plane Mileage", "emissions" = "Emissions (kg)"))
+
+table_data <- table_data %>%
+  mutate(across(where(is.numeric), ~ round(., 2)))
+
+realinged_count <- stadiums %>%
+  filter(team %in% realinged_teams) %>%
+  group_by(state) %>%
+  summarise(count = n())
+
+state_data <- map_data("state") %>%
+  mutate(region = state.abb[match(region, tolower(state.name))]) %>%
+  left_join(realinged_count, by = c("region" = "state"))
+```
+# Introduction
+
+The following essay will analyze and discuss how the landscape of collegiate football in 2024 represents a critical inflection point in the sport's evolution, with 134 FBS[^1] Division I schools navigating a complex variety of conference dynamics and institutional pressures [@ncaa_directory]. At the heart of this transformation lies a profound shift driven by economic imperatives and questionable strategic repositioning, particularly evident in the realignment of 15 teams across various conferences just this year [@espn_realignment_2024].
+
+The environmental implications of these conference changes are the main focus of our presentation. With the average collegiate football team traversing between 3,500 and 4,000 miles per season[^14] and generating approximately 600-700 tons of carbon emissions per conference, the newly realigned teams have emerged as significant benefactors to this footprint. Concentrated primarily along the West Coast, these conference shifts represent more than simple geographical rearrangements; they show a systemic corrupt view that prioritizes financial optimization over environmental sustainability.
+
+Beneath the surface of these realignments are dynamic webs that extend far beyond sporting performance. Conferences strategically maneuver to capture prevailing teams, enhance media viewership, and create more lucrative broadcasting opportunities. Teams are not merely relocated based on athletic merit but are repositioned as economic assets in a complex marketplace where institutional brand value and potential revenue streams become the primary currency of decision-making.
+
+The power dynamics underlying these transformations reveal a troubling narrative about contemporary collegiate athletics. Administrative leadership, predominantly motivated by financial considerations, makes sweeping decisions that fundamentally alter the sporting landscape. These choices systematically prioritize monetary gains over the holistic experience of student-athletes. This is further employed with the new NIL[^8] rules where students can profit within collegiate athletics. While enabling athletes to pursue new opportunities, these shifts also highlight the growing commercialization of collegiate sports. The impact on the environment due to increased travel and the erosion of historically communal rivalries that once defined college football underscore the troubling impacts of this evolving scene.
+
+The upcoming sections will delve into the data by including visualizations and tables to help illustrate the impact realignment has had on the collegiate and wider scope. 
+
+[^14]: see Figure \ref{fig1}
+[^1]: FBS: Football Bowl Subdivision, the upper level of Division I college football. Formerly known as Division I-A.
+[^8]: Name Image Likeness, a new system that allows college athletes to profit off their name, image, and likeness.
+
+# Background 
+
+Conference realignment has historically been driven by numerous factors, including financial, geographic, and competitive reasons. While realignment — commonly seen between conferences but also between NCAA divisions— has always occurred in the past, never such prolific as it was leading up to the 2024-25 season.
+
+To fully comprehend the reasons driving these schools to realign themselves, we must examine events beginning in 2021. Texas and Oklahoma had approached and reached a deal with the SEC[^2] to join their conference in the 2025-26 academic year [@ap_oklahoma_texas]. Their media deal for the 2024-25 season with their former conference, the Big 12, would be bought out by the SEC, setting the stage for these powerhouses to join the SEC a year earlier than expected [@big12_agreement].
+
+In 2022, Califonia-Los Angles (UCLA) and South California (USC) announced that they would be departing the Pac-12 to join the Big Ten for the 2024 season [@bigten_statement]
+
+Continuing up to 2023, the Pac-12 conference experienced controversy when formulating their 2024-25 media rights deal[^3]. Due to delays with the negotiation process, past ties with the Big 12, and reported push from donors and new coach, Deion Sanders, Colorado left the Pac-12 to rejoin the Big 12 [@espn_colorado_move]. Following this, news broke of a media deal involving Apple and its streaming service. While strongly supported by Oregon, with Phil Knight, schools worried about the lack of televised content of the conference if they were to tie with Apple [@apple_deal;   @uw_tv]. Arizona would vote to leave the conference as well on August 3rd, a day before a key conference meeting in which they would vote on the media deal with Apple. On August 4th, 10 minutes before the media rights meeting was set to begin, Washington informed the conference that it would be moving to the Big Ten, setting off a chain reaction. Oregon would follow Washington to the Big Ten, as well as Arizona State and Utah joining Arizona in moving to the Big 12 [@big12_arizona_asu_utah].
+
+These changes left four schools remaining in the Pac-12. Two of these schools, Cal-Berkley and Stanford, would be voted into the ACC[^4] in September of 2023. It must be noted that the entirety of the ACC is based on the east coast of the United States, whilst Cal and Stanford are both situated on the far west coast of the US, creating some of the farthest distances from schools all conferences. SMU[^5] would also be invited and join the ACC after talks with the ACC and Pac-12 [@acc_statement].
+
+Lastly, due to the loss of SMU, the AAC[^6] would search for a replacement. A key school that stuck out was the then-independent Army. The AAC would invite the Army as a football-only school to help the conference compete as well as support the Army's rivalry with the Navy [@aac_statement]. Furthermore, Kennesaw State would transition from FCS[^7] up to FBS and would join the C-USA conference [@cusa_statement]. 
+
+[^2]: Southeastern Conference
+[^3]: Media rights are the largest income source for FBS schools, making up 28% of a schools income [@knightnewhousedata]
+[^4]: Atlantic Coast Conference
+[^5]: Southern Methodist University 
+[^6]: American Athletic Conference
+[^7]: Football Championship Subdivision, the lower level of Division I Football
+
+```{r fig2, fig.width = 5, fig.pos="H", fig.height = 3, fig.align='center', dpi = 500, fig.cap = "\\label{fig2}FBS Schools Across the US.", echo = FALSE}
+showtext_auto()
+
+font_add(family = "Gulliver", regular = "/Users/carternabors/Downloads/Gulliver Regular.otf")
+
+p2 <- ggplot() +
+  geom_sf(data = US, fill = "lightgrey", color = "white", alpha = 0.5) +
+  geom_point(data = teams, aes(x = longitude, y = latitude, color = realigned), alpha = 0.8) +
+  theme_void() +
+  coord_sf(xlim = c(-125, -66), ylim = c(24, 50)) +
+  scale_size_continuous(name = "Total Distance (mi)", breaks = breakpoints, range = c(2, 10)) +
+  labs(y = element_blank(), x = element_blank(), caption = "Not Pictured: Hawaii") +
+  scale_color_manual(values = c(`TRUE` = "#FF6347", `FALSE` = "grey"), name = "Realigned", labels = c("No", "Yes")) +
+  theme_elsevier() +
+  theme(
+    panel.grid = element_blank(),
+    axis.title = element_blank(),
+    axis.text = element_blank(),
+    plot.margin = margin(10, 10, 10, 0)
+  ) +
+  geom_text_repel(
+    data = teams %>% filter(realigned), aes(x = longitude, y = latitude, label = team), size = 2,
+    box.padding = 0.35, point.padding = 0.5, segment.color = "grey50"
+  )
+
+p2
+```
+
+
+# Methodology
+
+This section outlines the methods of data collection, and analysis used to investigate the impact of FBS conference realingment on the environment. This involved three main steps: data researching and collecting, data cleaning, and data analysis. 
+
+## Data Collection
+
+Data collection was the first step in analyzing our topic. While analyzed data about FBS teams, their schedules, and stadium information was readily available, the datasets themselves were not. Multiple articles and sources, primarily from the NCAA did not release data in a tangible form that could be used for analysis or data that could be easily downloaded. This required us to look elsewhere for usable data.
+
+Our first dataset used was sourced from Wikipedia, which contained a list of FBS schools, conferences, and current state [@wiki_fbs_list]. This dataset was chosen instead of the Wikipedia source document as it was downloadable, compared to the NCAA's dataset. The second dataset used was sourced from Gboeing's GitHub repository, which contained geocoded data of FBS stadiums [@gboeing]. This dataset, while quite dated, provided a majority of stadium geographic locations in the form of latitude and longitude. Due to the age of the dataset, however, we were required to manually research and add location data for schools that had transitioned up, such as Coastal Carolina, Kennesaw State, James Madison, and others. 
+
+The primary datasets used in this study required considerable effort to locate. While specific game data is readily accessible on platforms such as ESPN.com, comprehensive data, including all games over an entire season, is less accessible — without resorting to web scraping. After a long search, the datasets would be sourced from Sports-Reference.com (SR) [@sr21; @sr22; @sr23; @sr24]. While SR is traditionally a baseball statistic website, the platform also maintains publicly available data for college football, pro football, college basketball, and hockey. SR, while being extremely useful, does not contain metrics such as emissions, mileage, or team schedules. They do, however, provide a list of all games in a single season in a downloadable format that is used in this study.
+
+## Data Cleaning
+
+This studies raw data composes of three datasets: a list of FBS schools and their respected conferences, a list of FBS stadiums and their geodata, and a list of all games from 2021 through the 2024[^9] seasons. To effectively analyze the data, the datasets were cleaned and merged to create a single dataset that could be used for analysis. This section will describe the process of cleaning the three data sets.
+
+Starting with the FBS list, the original column name holding conference information contained a new line character that had to be removed, then, both the school and its conference were selected from the greater dataset, and Louisiana-Monroe was recorded due to a special character in its name.
+
+```{r, eval = FALSE, echo = TRUE}
+fbs_list <- read_csv("./data/FBS_list.csv") %>%
+  rename(conference = `Current\r\nConference`) %>%
+  select(School, conference) %>%
+  mutate(School = recode(
+    School,
+    "Louisiana–Monroe" = "Louisiana-Monroe"
+  ))
+```
+
+The second dataset, containing stadium information, required additional steps to clean. The dataset was filtered to only relevant columns — school, state, longitude, latitude, and capacity — and then, schools that had transitioned from FCS to FBS since the original dataset, such as Coastal Carolina and James Madison, were created were added to the dataset with matching data, Finally, the dataset was recoded to match the school names in the FBS list dataset to aid in properly joining the datasets.
+
+```{r, eval = FALSE, echo = TRUE}
+stadiums <- read_csv("./data/stadiums-geocoded.csv") %>%
+  select(team, capacity, div, latitude, longitude, state) %>%
+  filter(div == "fbs" & team != "Idaho") %>%
+  add_row(
+    team = school,
+    capacity = num,
+    div = "fbs",
+    latitude = num,
+    longitude = num
+  ) %>%
+  mutate(team = recode(team,
+    "Louisiana-Lafayette" = "Louisiana",
+    "Connecticut" = "UConn",
+    "Louisiana-Monroe" = "Louisiana-Monroe",
+    "Miami" = "Miami (FL)",
+    "NIU" = "Northern Illinois",
+    "Mississippi" = "Ole Miss",
+    "USF" = "South Florida",
+    "Southern California" = "USC"
+  ))
+```
+
+The final datasets, containing game data, were the most complicated to clean. The datasets originally contained only winner and loser columns, rather than a designation of home and away — something that would be key in calculating distances teams would have to travel. Thankfully, the dataset did provide a separate column designating away/neutral of the winning team. Utilizing this, data was cleaned by first removing rankings from team names[^10] with a gsub function according to a regex expression. Then, the function checks the presence of an ampersand in the `away_neutral ` column in a conditional statement, with the true assigning the losing team to home, and the false assigning the winning team. This would be repeated with the scores of each game. By utilizing this method, we can alter and better grasp each team's schedule and also remove neutral games that are not calculated. After, we recode schools to match with the aforementioned FBS list, filter teams that do not have a stadium, and drop obsolete columns. It is important to note that we do not have to check if the home team is an FBS team since no FBS teams play an away game at a non-FBS school [@fcs_away]. Lastly, we add each new dataset of schedules to a combined list for later usage in analysis.
+
+```{r, eval = FALSE, echo = TRUE}
+clean <- function(dat, stadiums) {
+  dat %>%
+    mutate(
+      across(everything(), ~ gsub("\u00A0", " ", .))
+    ) %>%
+    mutate(
+      winner = gsub(
+        "\\([0-9]{1,2}\\)\\s*", "", winner
+      ),
+      loser = gsub(
+        "\\([0-9]{1,2}\\)\\s*", "", loser
+      ),
+      home = ifelse(
+        grepl("@", away_neutral), loser, winner
+      ),
+      away = ifelse(
+        grepl("@", away_neutral), winner, loser
+      ),
+      home_pts = ifelse(
+        grepl("@", away_neutral), lose_pts, win_pts
+      ),
+      away_pts = ifelse(
+        grepl("@", away_neutral), win_pts, lose_pts
+      )
+    ) %>%
+    mutate(
+      home = recode(home,...)),
+      away = recode(away,...)
+    ) %>%
+    filter(away %in% stadiums$team) %>%
+    select(-winner, -loser, -win_pts, -lose_pts)
+}
+
+dat_2021 <- clean(read_csv("./data/2021_schedule.csv") %>%
+  rename_all(tolower), stadiums)
+dat_2022 <- clean(read_csv("./data/2022_schedule.csv")...)
+dat_2023 <- clean(read_csv("./data/2023_schedule.csv")...)
+dat_2024 <- clean(read_csv("./data/2024_schedule.csv")...)
+
+schedules <- list(
+  "2021" = dat_2021,
+  "2022" = dat_2022,
+  "2023" = dat_2023,
+  "2024" = dat_2024
+)
+```
+
+[^9]: Seasons named by the year they start
+[^10]: If present
+
+## Data Analysis
+
+This study's core focus is on the environmental impact of FBS conference realignment. To utilize the data we have collected and cleaned, we first calculated the distance each team had to travel each year based on a Haversine great circle distance formula[^11][^12] — which takes two coordinates and calculates the true distance between each, adjusting for the curvature of the earth. Additionally, to emphasize detail and fairness to schools that travel nearby, we tracked bus and plane mileage, in addition to total mileage, with a cutoff at an estimated 350 miles[^13]. 
+```{r, eval = FALSE, echo = TRUE}
+get_distance <- function(year, teams) {
+  for (i in 1:nrow(teams)) {
+    team_lat <- round(teams$latitude[i], digits = 4)
+    team_long <- round(teams$longitude[i], digits = 4)
+    away_games <- schedules[[year]][
+      schedules[[year]]$away == team, "home"
+    ]
+    for (j in 1:nrow(away_games)) {
+      home_team <- away_games$home[j]
+      if (!is.na(home_team) && any(teams$team == home_team)) {
+        home_lat <- round(teams[
+          teams$team == home_team, "latitude"
+        ]$latitude[1], digits = 4)
+        home_long <- round(teams[
+          teams$team == home_team, "longitude"
+        ]$longitude[1], digits = 4)
+        distance <- distHaversine(
+          matrix(c(team_long, team_lat), ncol = 2),
+          matrix(c(home_long, home_lat), ncol = 2)
+        ) / 1609.34
+        if (distance < 351 && team != "Hawaii") {
+          bus_mileage <- bus_mileage + distance
+        } else {
+          plane_mileage <- plane_mileage + distance
+        }
+        total_mileage <- total_mileage + distance
+      }
+    }
+  }
+  return(teams)
+}
+
+teams <- get_distance("2021", teams)
+teams <- get_distance("2022", teams)
+teams <- get_distance("2023", teams)
+teams <- get_distance("2024", teams)
+```
+
+
+However, emissions data are still missing. To calculate this, we used the formula $bus\_mileage * 3 + plane\_mileage * 19$ to estimate kilogram emissions. These numbers were derived from the EPA's Inventory of U.S. Greenhouse Gas Emissions and Sinks report, which finds that a bus emits ~3 kg of CO2 per mile, and a plane emits ~9 kg of CO2 per mile [@epa_inventory]. This framework lays the groundwork to evaluate and analyze the implications of realignment decisions.
+
+[^11]: Provided by the geosphere R package
+[^12]: See [@gc] for more regarding great circle distance
+[^13]: May fluctuate based on school or specific travel
+
+# Findings
+
+This section presents the results of the will present the study's data, utilizing mileage, emissions, and schedule data accompanied by graphs, tables, and other visualizations. To most effectively distinguish between colors in the following visualizations, it is recommended to view them in full color — rather than black/white.
+
+## Mileage
+
+Mileage is a direct measurement of how far a school has to travel. It is calculated by collecting all of a school's away games, computing the distances to each of their opponents, and summing the distances. Figure \ref{fig1} and \ref{fig4} shows the specific mileage each school traveled from 2022 through 2024, with schools that realigned conferences in red. 
+
+```{r fig1, fig.width = 5, fig.pos = "H", fig.height = 5, dpi = 500, fig.align='center', fig.cap = "\\label{fig1}Total Mileage for FBS Teams", echo = FALSE}
+showtext_auto()
+
+font_add(family = "Gulliver", regular = "/Users/carternabors/Downloads/Gulliver Regular.otf")
+
+p <- ggplot() +
+  geom_col(data = teams, aes(x = reorder(team, total_mileage_2024), y = total_mileage_2024, fill = realigned), width = 0.4) +
+  scale_fill_manual(values = c(`TRUE` = "#FF6347", `FALSE` = "grey"), name = "Realigned", labels = c("No", "Yes")) +
+  theme_elsevier() +
+  theme(
+    panel.grid.major.y = element_blank(),
+    panel.grid.minor.y = element_blank(),
+    axis.text.y = element_blank(),
+    axis.text.x = element_blank(),
+    legend.position = "none"
+  ) +
+  labs(x = element_blank(), y = "2024") +
+  coord_flip() +
+  geom_vline(xintercept = c(nrow(teams) - 4.5, nrow(teams) - 9.5, nrow(teams) - 24.5, nrow(teams) - 49.5, nrow(teams) - 99.5), linetype = "dashed", color = "grey")
+
+
+p3 <- ggplot() +
+  geom_col(data = teams, aes(x = reorder(team, total_mileage_2023), y = total_mileage_2023, fill = realigned), width = 0.4) +
+  scale_fill_manual(values = c(`TRUE` = "#FF6347", `FALSE` = "grey")) +
+  theme_elsevier() +
+  theme(
+    panel.grid.major.y = element_blank(),
+    panel.grid.minor.y = element_blank(),
+    axis.text.y = element_blank(),
+    axis.text.x = element_blank(),
+    legend.position = "none"
+  ) +
+  labs(x = element_blank(), y = "2023") +
+  coord_flip() +
+  geom_vline(xintercept = c(nrow(teams) - 4.5, nrow(teams) - 9.5, nrow(teams) - 24.5, nrow(teams) - 49.5, nrow(teams) - 99.5), linetype = "dashed", color = "grey")
+
+p4 <- ggplot() +
+  geom_col(data = teams, aes(x = reorder(team, total_mileage_2022), y = total_mileage_2022, fill = realigned), width = 0.4) +
+  scale_fill_manual(values = c(`TRUE` = "#FF6347", `FALSE` = "grey")) +
+  theme_elsevier() +
+  theme(
+    panel.grid.major.y = element_blank(),
+    panel.grid.minor.y = element_blank(),
+    axis.text.y = element_blank(),
+    axis.text.x = element_blank(),
+    legend.position = "none"
+  ) +
+  labs(x = element_blank(), y = "2022") +
+  coord_flip() +
+  geom_vline(xintercept = c(nrow(teams) - 4.5, nrow(teams) - 9.5, nrow(teams) - 24.5, nrow(teams) - 49.5, nrow(teams) - 99.5), linetype = "dashed", color = "grey")
+
+p5 <- ggplot() +
+  geom_col(data = teams, aes(x = reorder(team, total_mileage_2021), y = total_mileage_2021, fill = realigned), width = 0.4) +
+  scale_fill_manual(values = c(`TRUE` = "#FF6347", `FALSE` = "grey")) +
+  theme_elsevier() +
+  theme(
+    panel.grid.major.y = element_blank(),
+    panel.grid.minor.y = element_blank(),
+    axis.text.y = element_blank(),
+    axis.text.x = element_blank(),
+    legend.position = "none"
+  ) +
+  labs(x = element_blank(), y = "2021") +
+  coord_flip() +
+  geom_vline(xintercept = c(nrow(teams) - 4.5, nrow(teams) - 9.5, nrow(teams) - 24.5, nrow(teams) - 49.5, nrow(teams) - 99.5), linetype = "dashed", color = "grey")
+
+combined = (p5 | p4) / (p3 | p)
+
+combined
+```
+
+```{r fig4, fig.width = 5, fig.pos = "H", fig.height = 3, dpi = 500, fig.cap = "\\label{fig4}Team Mileage over Years", echo = FALSE}
+p4 <- ggplot(teams_long %>% filter(team != "Hawaii"), aes(x = year, y = mileage, group = team, color = realigned)) +
+  geom_line() +
+  geom_point() +
+  geom_vline(xintercept = 2024, linetype = "dashed", color = "black", alpha = 0.5) +
+  annotate("text",
+    x = 2024, y = max(teams_long$mileage),
+    label = "Conference\nRealignment",
+    hjust = 1.1, vjust = 1
+  ) +
+  scale_color_manual(
+    values = c(`TRUE` = "#FF6347", `FALSE` = "grey"),
+    name = "Realigned", labels = c("No", "Yes")
+  ) +
+  theme_elsevier() +
+  theme(
+    panel.grid.major.y = element_blank(),
+    panel.grid.minor.y = element_blank(),
+    axis.title = element_blank(),
+    axis.text = element_blank()
+  )
+
+p4
+```
+
+The key finding when observing and comparing mileage by team across four years is the definite and absolute aggregation of individual mileage by teams in the upper percentiles of all FBS teams. This correlates directly to when the same highlighted schools realigned their conferences. To further aid in visualizing each game, each team's travel was plotted on a US map (Figure \ref{fig3}).
+
+```{r fig3, fig.width = 5, fig.pos = "H", fig.height = 5, dpi = 500, fig.align='center', fig.cap = "\\label{fig3}FBS Schools Across the US.", echo = FALSE}
+p5 <- ggplot() +
+  geom_sf(data = US, fill = "lightgray", color = "white", alpha = 0.5) +
+  geom_path(data = lines, aes(x = lon, y = lat, group = id, color = realinged), size = 0.3, alpha = 0.7) +
+  geom_point(data = stadiums %>% filter(team %in% realinged_teams), aes(x = longitude, y = latitude), size = 0.7, alpha = 0.7) +
+  geom_vline(data = time_zones, aes(xintercept = lon), linetype = "dotted", color = "grey") +
+  theme_elsevier() +
+  coord_sf(xlim = c(-125, -66), ylim = c(24, 50)) +
+  scale_color_manual(values = c(`TRUE` = "#FF6347", `FALSE` = "grey"), name = "Realigned", labels = c("No", "Yes")) +
+  theme(
+    panel.grid.major.y = element_blank(),
+    panel.grid.minor.y = element_blank(),
+    axis.text = element_blank(),
+    panel.grid = element_blank(),
+    axis.title = element_blank(),
+  )
+p5
+```
+
+The map in Figure \ref{fig3} illustrates the distances traveled by realigned schools compared to teams in fixed conferences, emphasizing the increased travel burden on the former. Furthermore, schools located on the West Coast often are forced to travel far east. Typically, these are schools in the ACC[^15] that are propagated in the West.
+
+[^15]: Cal, Stanford, and SMU
+
+## Emissions
+
+Emissions are directly correlated to mileage distance, and while estimated emissions conversion factor may vary from school to school due to games being bus or plane travel games, schools that travel more emit more emissions. We have calculated that buses use 3 kilograms of emissions per mile, and plane travel computed at 19 kilograms a mile. To form a direct and positive correlation between mileage and emissions, Table 1 plots conferences and realigned schools by their mileage and specific emissions types.
+
+```{r tbl1, fig.pos = "H", dpi = 500, fig.align='right', fig.cap = "Table 1 Mileage and Emissions by Conference", echo = FALSE, fig.margin = c(-5, 0, 0, 0)}
+table_data1 <- table_data %>% select(type, 2:7)
+table_data2 <- table_data %>% select(type, 8:13)
+
+ft1 <- flextable(table_data1) %>%
+  theme_vanilla() %>%
+  fontsize(size = 5, part = "all") %>%
+  # autofit() %>%
+  bold(part = "header") %>%
+  align(align = "center", part = "all") %>%
+  border_remove() %>%
+  border_outer(border = fp_border(width = 1)) %>%
+  border_inner_h(border = fp_border(width = 0.5)) %>%
+  width(j = 1:3, width = .25) %>%
+  height_all(height = 0.15)
+
+ft2 <- flextable(table_data2) %>%
+  theme_vanilla() %>%
+  fontsize(size = 5, part = "all") %>%
+  # autofit() %>%
+  bold(part = "header") %>%
+  align(align = "center", part = "all") %>%
+  border_remove() %>%
+  border_outer(border = fp_border(width = 1)) %>%
+  border_inner_h(border = fp_border(width = 0.5)) %>%
+  bg(j = "Realigned", bg = "gray", part = "body") %>%
+  color(j = "Realigned", color = "black", part = "body") %>%
+  set_header_labels(Realigned = "Realigned Metric") %>%
+  width(j = 1:3, width = .25) %>%
+  height_all(height = 0.15)
+
+ft1
+ft2
+```
+
+```{r fig5, fig.width = 5, fig.pos = "H", fig.height = 3, dpi = 500, fig.cap = "\\label{fig5}Emissions by Conference/Realigned", echo = FALSE}
+p2 <- ggplot(cr_data_long) +
+  geom_bar(aes(x = measurement, y = value, fill = type_realinged),
+    position = "stack",
+    stat = "identity"
+  ) +
+  facet_grid(~conference, switch = "x") +
+  scale_fill_manual(values = c("Bus-Realigned" = "#ffb5a8", "Plane-Realigned" = "#FF6347", "Bus-Not Realigned" = "grey", "Plane-Not Realigned" = "darkgrey"), name = "Type") +
+  theme_minimal() +
+  theme(
+    strip.placement = "outside",
+    strip.background = element_rect(fill = NA, color = "white"),
+    panel.spacing = unit(0.5, "cm"),
+    legend.position = "top",
+    panel.grid.minor = element_blank(),
+    axis.title = element_blank(),
+    legend.title = element_text(size = 8, face = "bold"),
+    legend.text = element_text(size = 5),
+    plot.title = element_blank(),
+    plot.margin = margin(10, 10, 10, 10),
+    axis.text.y = element_blank(),
+    strip.text.x = element_blank(),
+    axis.text.x = element_blank()
+  ) +
+  annotate("text", x = 1, y = -10, label = "Mi", size = 1.5, angle = 90, hjust = -0.5) +
+  annotate("text", x = 2, y = -10, label = "Em 10kg", size = 1.5, angle = 90, hjust = -0.15)
+
+
+p2
+```
+
+By understanding and relating mileage between games to emissions that teams individually produce during travel, we can propose solutions to reduce emissions and lead toward being more environmentally conscious.
+
+# Discussion 
+Conference realignment is a multi-faceted beast fueled by economic prosperity, and the need to stay relevant within the athletic landscape. Collegiate athletic departments brush past reasons, such as concern for players or staff, fan engagement, and cultural pasts such as rivalries, or school traditions. While there are very important ideals to retain for an athletic program, none such are as concrete and globally pressing as climate change [@ipcc].
+
+As seen in our findings, as a school increases its travel distance between opponents, its estimated emissions increase exponentially. This is especially true if a school is adding games that exceed the range of bus transport[^16], which causes team emissions to increase by 630% per mile in that trip. This drastic influx of emissions is further aided by the concentration of re-conferencing of schools on the West Coast, in which athletic programs are more sparsely distributed (Figure \ref{fig2}). Furthermore, these schools trend towards conferences more distributed in the Mid-South or East Coast United States, as seen in Figure \ref{fig3}. This compounds both high mileage and higher emissions from plane travel into almost all in-conference games a team will play each year (8 to 9 games, except the Pac-2 [@sportank]). When you consider that the average team will play 12 games each year, excluding Bowl games and the College Football Playoffs, that guarantees that our West Coast teams will have to fly 500-plus miles both ways at least four to five times a year and force other conference members to fly the same distance to and from them, four to five times a year.
+
+While these schools may see a return in profits once they begin to receive media deal profits that they turned away to be granted admission into many large conferences; there will always be questions onto truly why that appeals to be more advantageous than having conferences based on geographic location. This not only helps reduce mileage and allow teams to bus to more away games, but it also can help bolster fan attendance at home games from away fans, reignite old rivalries and spark new ones, and reduce the pressure on high travel cost burdens — all of which are large profit boosters. Referencing Knight Newhouse Data [@knightnewhousedata], ticket sales produce 15% of a team's income — which can be bolstered due to having close, accessible games for away fans to visit, and by bringing out home fans in tense rivalry games. Furthermore, also according to Knight Newhouse Data, travel is almost 14% of a team's expenditure. By reducing travel — quite drastically for some reconferenced teams —, teams can reduce costs and be more proactive on recruiting, stadium renovations, or student engagement; all of which can help further better profits and athletic success.
+
+To propose a solution, our study has formulated new conferences based on geographic reasons while attempting to retain historic rivalries and feuds between teams. While this is a far-fetched reality and — without severe cultural changes within college athletics — is nothing more than a pipe dream, it poses a question of why and what-if on the topic of school conferencing. 
+
+[^16]: Roughly 350 Miles
+
+```{r fig6, fig.width = 5, fig.pos = "H", fig.height = 3, dpi = 500, fig.cap = "\\label{fig6}FBS Schools Reconferenced", echo = FALSE}
+
+conferences <- list(
+  pac12 = c("California", "Oregon", "Oregon State", "Stanford", "UCLA", "USC", "Washington", "Washington State", "San Jose State", "San Diego State", "Fresno State", "Nevada"),
+  big10 = c("Arizona", "Arizona State", "UNLV", "Utah", "BYU", "Utah State", "Boise State", "Colorado", "Colorado State", "Wyoming", "Air Force"),
+  neac = c("Boston College", "Syracuse", "UMass", "UConn", "Army", "Rutgers", "Temple", "Navy", "Buffalo"),
+  acc = c("Virginia", "Virginia Tech", "Duke", "North Carolina", "NC State", "Clemson", "Maryland", "Wake Forest", "Georgia Tech", "Pittsburgh", "Louisville"),
+  big12 = c("Penn State", "Ohio State", "Michigan", "Michigan State", "Indiana", "Notre Dame", "Purdue", "Illinois", "Miami (OH)", "Cincinnati", "West Virginia", "Ohio"),
+  ecac = c("James Madison", "Liberty", "Old Dominion", "East Carolina", "Appalachian State", "Charlotte", "Coastal Carolina", "Georgia Southern", "Georgia State", "Kennesaw State"),
+  sec = c("Alabama", "Auburn", "LSU", "Ole Miss", "Mississippi State", "Arkansas", "Tennessee", "Florida State", "Florida", "Georgia", "Kentucky", "South Carolina", "Miami (FL)", "Louisiana"),
+  gcac = c("Tulane", "FIU", "Louisiana-Monroe", "Louisiana Tech", "South Alabama", "Troy", "UAB", "Jacksonville State", "Memphis", "South Florida", "UCF", "Southern Miss", "Florida Atlantic"),
+  tac = c("Texas", "TCU", "Texas Tech", "SMU", "Baylor", "Houston", "Texas State", "UTSA", "UTEP", "North Texas", "Texas A&M", "New Mexico", "New Mexico State", "Rice", "Sam Houston"),
+  meac = c("Vanderbilt", "Middle Tennessee", "Kent State", "Akron", "Bowling Green", "Toledo", "Eastern Michigan", "Western Michigan", "Central Michigan", "Northern Illinois", "Ball State", "Marshall", "Western Kentucky"),
+  mwac = c("Iowa", "Iowa State", "Minnesota", "Wisconsin", "Northwestern", "Nebraska", "Kansas", "Kansas State", "Missouri", "Oklahoma", "Oklahoma State", "Tulsa", "Arkansas State")
+)
+
+schoool <- do.call(rbind, lapply(names(conferences), function(conf) {
+  data.frame(team = conferences[[conf]], new_conference = conf, stringsAsFactors = FALSE)
+}))
+
+teams <- teams %>% left_join(schoool, by = "team")
+
+p7 <- ggplot() +
+  geom_sf(data = US, fill = "lightgrey", color = "white", alpha = 0.5) +
+  geom_point(data = teams, aes(x = longitude, y = latitude, color = new_conference), alpha = 0.8) +
+  theme_void() +
+  coord_sf(xlim = c(-125, -66), ylim = c(24, 50)) +
+  labs(y = element_blank(), x = element_blank(), caption = "Not Pictured: Hawaii") +
+  theme_elsevier() +
+  theme(
+    panel.grid = element_blank(),
+    axis.title = element_blank(),
+    axis.text = element_blank(),
+    plot.margin = margin(10, 10, 10, 0),
+    legend.position = "none"
+  )
+
+p7
+```
+
+Seen above is this study's attempt to assign conferences to athletic teams based on a few factors: distance between schools, as discussed before lower mileage leads to lower emissions, and athletic performance of a school as it would be unfair to plot Alabama and Troy in the same conference, and rivalries like Virginia and Virginia Tech — both of which could be in different conferences. 
+
+This graphic is to be designed to be taken lightly, however. As, while much more ideal, it is not without flaws. Complex discussions over media rights, individual schools' preference for conference opponents, and more. However, this does bring forth the issue that plagues college football in that it is impossible to satisfy all teams perfectly. To strive to have a "perfect" solution is ultimately setting oneself up for failure.
+
+In an ever-changing environment as rapid as college athletics, one must learn to both be cooperative and adaptable. While topics like these are gaining traction, time still is needed to see change in a positive direction. It is increasingly important to keep informing others and amplify others to help lead us all in a more positive direction.
+
+# Conclusion
+
+College Football, considered one of America's most famous pastimes, has so much to be proud of. Transforming young men into strong, confident, men ready for the real world — whether NFL or elsewhere — is a system built for good. When utilized as a business, rather than the culture that it is derives from where the sport came from in the first place. A group of boys looking to represent their school, and fight for something bigger. Now, it is time for others to fight for something bigger; a fight for climate awareness. While college football is not the sole cause of the climate crisis, the sport has an enormous platform for change that we have seen utilized in the past. To set an example for other sports or organizations helps bleed the mission into other forms of life and culture, hopefully leading to a better future for us and our children.

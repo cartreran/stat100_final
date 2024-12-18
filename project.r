@@ -281,7 +281,7 @@ p6 <- ggplot(state_data, aes(map_id = region)) +
 )
   
 ## Save plots to files in /out
-save_as_image(ft, "./out/table.png", res = 300)
+# save_as_image(ft, "./out/table.png", res = 300)
 ggsave("./out/total_mileage_fbs.png", plot = p, width = 16, height = 12, units = "in", dpi = 300)
 ggsave("./out/total_emissions_by_conference.png", plot = p2, width = 16, height = 12, units = "in", dpi = 300)
 ggsave("./out/total_mileage_map.png", plot = p3, width = 16, height = 12, units = "in", dpi = 300)

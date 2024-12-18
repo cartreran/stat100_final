@@ -1,0 +1,17 @@
+---
+title: "Enviormental Impact of FBS Conference Realignment"
+author: "Carter Nabors, Gage LeMaster"
+date: "`r format(Sys.time(), '%B %d, %Y')`"
+output:
+  pdf_document: 
+    number_sections: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+knitr::opts_chunk$set(fig.width = 3, fig.height = 4)
+knitr::opts_chunk$set(cache = TRUE)
+knitr::opts_chunk$set(fig.align = "center")
+knitr::opts_chunk$set(warning = FALSE, message = FALSE)
+```
+
